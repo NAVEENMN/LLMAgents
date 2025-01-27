@@ -20,7 +20,7 @@ class LLM(nn.Module):
 
     def set_model(self, model="gpt2"):
         if model == "gpt2":
-            # Load model and tokenizer
+            # Load GPT-2 model and tokenizer
             self.model = AutoModelForCausalLM.from_pretrained('gpt2', trust_remote_code=True).to(self.device)
             self.tokenizer = AutoTokenizer.from_pretrained('gpt2', trust_remote_code=True)
             self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -34,6 +34,13 @@ class LLM(nn.Module):
                 device_map="auto"
             )
             self.tokenizer = QwenTokenizer.from_pretrained(model_name)
+        elif model == "galactica":
+            # Load Galactica model and tokenizer
+            model_name = "facebook/galactica-6.7b"
+            self.model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True).to(self.device)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.model.eval()
         else:
             raise ValueError(f"Model {model} not supported")
 
@@ -60,7 +67,6 @@ class LLM(nn.Module):
                     temperature=temperature,
                     top_k=top_k
                 )
-                # Remove the input tokens to isolate the generated response
                 generated_ids = [
                     output_ids[len(input_ids):] for input_ids, output_ids in zip(inputs.input_ids, generated_ids)
                 ]
@@ -89,7 +95,7 @@ class LLM(nn.Module):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="LLM Text Generation")
-    parser.add_argument("--model", type=str, default="qwen", help="Model name to use ('gpt2' or 'qwen')")
+    parser.add_argument("--model", type=str, default="gpt2", help="Model name to use ('gpt2', 'qwen', or 'galactica')")
     parser.add_argument("--text", type=str, default="Find the value of $x$ that satisfies the equation $4x+5 = 6x+7$.", help="Input text")
     args = parser.parse_args()
 
