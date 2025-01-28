@@ -36,7 +36,21 @@ class CustomDataset(Dataset):
             "labels": encoded["input_ids"].squeeze()
         }
 
+def select_device():
+    """Select the appropriate device: CUDA GPU, Mac GPU (MPS), or CPU."""
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"  # Metal Performance Shaders (Mac GPU)
+    else:
+        device = "cpu"
+    print(f"Using device: {device}")
+    return device
+
 def fine_tune(model_name, train_file, output_dir, epochs=3, batch_size=4):
+    # Select device
+    device = select_device()
+
     # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
     
@@ -44,7 +58,7 @@ def fine_tune(model_name, train_file, output_dir, epochs=3, batch_size=4):
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(model_name, trust_remote_code=True).to(device)
 
     # Load dataset
     dataset = CustomDataset(train_file, tokenizer)
@@ -55,7 +69,7 @@ def fine_tune(model_name, train_file, output_dir, epochs=3, batch_size=4):
         output_dir=output_dir,
         num_train_epochs=epochs,
         per_device_train_batch_size=batch_size,
-        save_steps=500,
+        save_steps=5,
         save_total_limit=2,
         logging_dir=f"{output_dir}/logs",
         logging_steps=10,
@@ -85,8 +99,8 @@ def fine_tune(model_name, train_file, output_dir, epochs=3, batch_size=4):
 if __name__ == "__main__":
     # Define parameters
     MODEL_NAME = "gpt2"
-    TRAIN_FILE = "data/train_data.json"
-    OUTPUT_DIR = "./fine_tuned_model"
+    TRAIN_FILE = "data/train_data_modified.json"
+    OUTPUT_DIR = "./fine_tuned_model_nf"
     EPOCHS = 3
     BATCH_SIZE = 2
 
