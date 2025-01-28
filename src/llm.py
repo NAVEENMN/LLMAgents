@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
@@ -10,20 +11,42 @@ from transformers import (
 import argparse
 import json
 import re
-import platform
 import warnings
 
 # Suppress unnecessary warnings
 warnings.filterwarnings("ignore", message="`resume_download` is deprecated")
 warnings.filterwarnings("ignore", message="urllib3.*")
 
-def select_device():
-    """Select the appropriate device: CUDA GPU, Mac GPU (MPS), or CPU."""
-    if torch.cuda.is_available():
-        return "cuda"
-    elif torch.backends.mps.is_available():
-        return "mps"  # Metal Performance Shaders (Mac GPU)
-    return "cpu"
+
+def select_device(device_type, gpu_ids=None):
+    """
+    Select the appropriate device: specific CUDA GPUs, Mac GPU (MPS), or CPU.
+
+    Args:
+        device_type (str): Type of device ('cpu', 'mps', or 'gpu').
+        gpu_ids (str or None): Comma-separated list of GPU IDs (e.g., "2,3").
+
+    Returns:
+        str: Device string ('cuda', 'mps', or 'cpu').
+    """
+    if device_type == "gpu":
+        if gpu_ids:
+            os.environ["CUDA_VISIBLE_DEVICES"] = gpu_ids
+            print(f"CUDA_VISIBLE_DEVICES set to {os.environ['CUDA_VISIBLE_DEVICES']}")
+        if torch.cuda.is_available():
+            return "cuda"
+        else:
+            raise ValueError("CUDA is not available. Please check your setup or select another device.")
+    elif device_type == "mps":
+        if torch.backends.mps.is_available():
+            return "mps"
+        else:
+            raise ValueError("MPS (Metal Performance Shaders) is not available on this system.")
+    elif device_type == "cpu":
+        return "cpu"
+    else:
+        raise ValueError(f"Invalid device type: {device_type}. Choose from 'cpu', 'mps', or 'gpu'.")
+
 
 class CustomDataset(Dataset):
     def __init__(self, file_path, tokenizer, max_length=512):
@@ -56,11 +79,12 @@ class CustomDataset(Dataset):
             "labels": encoded["input_ids"].squeeze()
         }
 
+
 class LLM(nn.Module):
-    def __init__(self, name: str):
+    def __init__(self, name: str, device: str):
         super().__init__()
         self.name = name
-        self.device = select_device()
+        self.device = device
         self.model = None
         self.tokenizer = None
 
@@ -139,17 +163,23 @@ class LLM(nn.Module):
             )
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Unified LLM Operations")
-    parser.add_argument("--task", type=str, required=True, choices=["fine_tune", "evaluate", "prompt"], help="Task to perform")
+    parser.add_argument("--task", type=str, required=True, choices=["fine_tune", "evaluate", "prompt", "prompt_with_cot"], help="Task to perform")
     parser.add_argument("--model", type=str, default="gpt2", help="Model name or path")
     parser.add_argument("--train_file", type=str, help="Path to training data")
     parser.add_argument("--test_file", type=str, help="Path to testing data")
-    parser.add_argument("--output_dir", type=str, default="./fine_tuned_model", help="Output directory for fine-tuning")
+    parser.add_argument("--output_dir", type=str, default="./fine_tuned_model_llm", help="Output directory for fine-tuning")
     parser.add_argument("--prompt_text", type=str, help="Input prompt text")
+    parser.add_argument("--device", type=str, required=True, choices=["cpu", "mps", "gpu"], help="Device to run the script on")
+    parser.add_argument("--gpu_ids", type=str, help="Comma-separated list of GPU IDs (e.g., '2,3') if device is 'gpu'")
     args = parser.parse_args()
 
-    llm = LLM(name=args.model)
+    # Select device
+    device = select_device(device_type=args.device, gpu_ids=args.gpu_ids)
+
+    llm = LLM(name=args.model, device=device)
     llm.set_model(model=args.model)
 
     if args.task == "fine_tune":
@@ -167,3 +197,9 @@ if __name__ == "__main__":
             raise ValueError("Prompt text required for generating response")
         response = llm.prompt(args.prompt_text)
         print(f"Response: {response}")
+
+    elif args.task == "prompt_with_cot":
+        if not args.prompt_text:
+            raise ValueError("Prompt text required for generating response")
+        cot_segments = llm.prompt_with_cot(args.prompt_text)
+        print(f"Chain of Thought Segments: {cot_segments}")
